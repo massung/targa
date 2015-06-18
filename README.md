@@ -30,7 +30,7 @@ Once you have the TGA structure, you can use the reader functions to find out ev
 	
 The TGA pixels is actually an array of arrays. The first array are all the scanlines, and each scanline is an array of pixels.
 
-A TGA file can have its screen origin on the y-axis be the bottom or top, the x-axis origin on the left or right. When reading in the TGA, no effort is made to keep a consistent origin pixels array. But, as long as you use the `tga-get-pixel` function, it will ensure that you get the correct pixel.
+A TGA file can have its screen origin on the y-axis be the bottom or top, the x-axis origin on the left or right. When reading in the TGA, no effort is made to keep a consistent origin for the pixels array. But, as long as you use the `tga-get-pixel` function, it will ensure that you get the "correct" pixel (originating from the top-left).
 
 	(tga-get-pixel tga x y)  ;=> (r g b a)
 	

@@ -52,7 +52,7 @@
    #:tga-header-image-descriptor
    #:tga-header-color-map-p
    #:tga-header-rle-compressed-p
-   #:tga-header-alpha-size
+   #:tga-header-attribute-bits
    #:tga-header-screen-x-origin
    #:tga-header-screen-y-origin
 
@@ -171,8 +171,8 @@
   "T if the image is run-length-encoded."
   (plusp (logand (tga-header-image-type h) #b1000)))
 
-(defun tga-header-alpha-size (h)
-  "Return the number of alpha bits per pixel."
+(defun tga-header-attribute-bits (h)
+  "Return the number of attribute bits per pixel."
   (logand (tga-header-image-descriptor h) #b1111))
 
 (defun tga-header-screen-x-origin (h)
@@ -314,7 +314,8 @@
 
         ;; read each component channel into the final color
         for channel below pixel-size by 8
-        sum (ash (read-byte s) channel) into c
+        sum (ash (read-byte s) channel)
+        into c
 
         ;; convert the final color into a list of floats
         finally (return (if (<= pixel-size 8)
@@ -341,7 +342,7 @@
 
           ;; get the size of each color entry
           with color-size = (tga-header-color-map-entry-size h)
-          with alpha-size = (tga-header-alpha-size h)
+          with alpha-size = (tga-header-attribute-bits h)
 
           ;; loop over the entire color map
           for n below length
@@ -357,9 +358,10 @@
   (let ((pixel-size (tga-header-pixel-size h)))
     (if color-map
         (loop for i below pixel-size by 8
-              sum (ash (read-byte s) i) into pixel
+              sum (ash (read-byte s) i)
+              into pixel
               finally (return (aref color-map pixel)))
-      (read-color s pixel-size (tga-header-alpha-size h)))))
+      (read-color s pixel-size (tga-header-attribute-bits h)))))
 
 (defun read-rle-pixels (s h color-map)
   "Reads a run-length encoded list of pixels."
