@@ -20,11 +20,17 @@
 (defpackage :targa
   (:use :cl)
   (:nicknames :tga)
+  (:documentation "http://www.fileformat.info/format/tga/egff.htm")
   (:export
 
    ;; reading and loading a targa
-   #:tga-read
    #:tga-load
+   #:tga-read
+
+   ;; reading extension values
+   #:tga-read-color-correction-table
+   #:tga-read-scanline-table
+   #:tga-read-postage-image
 
    ;; pixel access functions
    #:tga-get-pixel
@@ -73,9 +79,6 @@
    #:tga-extension-postage-stamp-offset
    #:tga-extension-scan-line-offset
    #:tga-extension-attributes-type
-   #:tga-extension-scan-line-table
-   #:tga-extension-postage-stamp-image
-   #:tga-extension-color-correction-table
 
    ;; developer tag reader functions
    #:tga-developer-tag-id
@@ -202,10 +205,7 @@
   (color-correction-offset nil :read-only t)
   (postage-stamp-offset    nil :read-only t)
   (scan-line-offset        nil :read-only t)
-  (attributes-type         nil :read-only t)
-  (scan-line-table         nil :read-only t)
-  (postage-stamp-image     nil :read-only t)
-  (color-correction-table  nil :read-only t))
+  (attributes-type         nil :read-only t))
 
 (defun read-tga-extension (stream offset)
   "Parse an extension from an input stream at a given offset."
@@ -229,6 +229,77 @@
      :postage-stamp-offset (read-long stream)
      :scan-line-offset (read-long stream)
      :attributes-type (read-byte stream))))
+
+(defun tga-read-color-correction-table (stream tga)
+  "Read the color-correction table."
+  (with-slots (extension)
+      tga
+    (when extension
+      (let ((offset (tga-extension-color-correction-offset extension)))
+        (when (and (plusp offset) (file-position stream offset))
+          (loop with table = (make-array 256)
+
+                ;; loop over the entire table
+                for i below 256
+
+                ;; read each color component
+                for alpha = (read-short stream)
+                for red = (read-short stream)
+                for green = (read-short stream)
+                for blue = (read-short stream)
+
+                ;; fill in the table
+                do (setf (aref table i) (list red green blue alpha))
+
+                ;; done
+                finally (return table)))))))
+
+(defun tga-read-scanline-table (stream tga)
+  "Read all the scanline offsets."
+  (with-slots (header extension)
+      tga
+    (when extension
+      (let ((offset (tga-extension-scan-line-offset extension)))
+        (when (and (plusp offset) (file-position stream offset))
+          (loop with height = (tga-header-height header)
+                with scanlines = (make-array height)
+                
+                ;; loop over all the scanlines and read their offset
+                for i below height
+                do (setf (aref scanlines i) (read-long stream))
+                
+                ;; return the array of offsets
+                finally (return scanlines)))))))
+
+(defun tga-read-postage-stamp (stream tga)
+  "Read the postage stamp image from the targa stream."
+  (with-slots (header color-map extension)
+      tga
+    (when extension
+      (let ((offset (tga-extension-postage-stamp-offset extension)))
+        (when (and (plusp offset) (file-position stream offset))
+          (loop with width = (read-byte stream)
+                with height = (read-byte stream)
+                with scanlines = (make-array (tga-header-height header) :fill-pointer 0)
+
+                ;; create a copy of the tga structure
+                with postage = (make-tga :header (copy-tga-header header)
+                                         :color-map color-map
+                                         :pixels scanlines)
+
+                ;; loop over each scanline in the postage stamp
+                for y below height
+
+                ;; read every pixel in the scanline into an array
+                do (let ((pixels (make-array width)))
+                     (dotimes (x width)
+                       (setf (aref pixels x) (read-pixel stream header color-map)))
+                     (setf (aref scanlines y) pixels))
+
+                ;; return the width, height, and pixel data
+                finally (return (prog1 postage
+                                  (setf (slot-value (tga-header postage) 'width) width
+                                        (slot-value (tga-header postage) 'height) height)))))))))
 
 ;;; -----------------------------------------------------
 
@@ -385,10 +456,10 @@
   "Read all the pixels for the image."
   (when (plusp (tga-header-image-type h))
     (let ((scanlines (make-array (tga-header-height h) :fill-pointer 0)))
-      (flet ((read-scanlines (color-map)
-               (dotimes (y (tga-header-height h) scanlines)
-                 (vector-push (read-scanline s h color-map) scanlines))))
-        (read-scanlines (and (tga-header-color-map-p h) color-map))))))
+      (dotimes (y (tga-header-height h) scanlines)
+        (if (tga-header-color-map-p h)
+            (vector-push (read-scanline s h color-map) scanlines)
+          (vector-push (read-scanline s h nil) scanlines))))))
 
 (defun read-ext-and-tags (s)
   "Determine if this is a truevision file with an extension and a developer tags."
