@@ -44,7 +44,7 @@ If the TGA has an extension, there are several other optional areas that can the
 	(tga-read-scanline-table stream tga)          ;=> scanlines
 	(tga-read-postage-stamp-image stream tga)     ;=> tga
 
-The *table* is an array of 256 lists, where each list is comprised of unsigned, 16-bit red, green, blue, and alpha values that can be used for color remapping. It is up to you to use these values in conjunction with `tga-get-pixel` however you'd like.
+The *table* is an array of 256 lists, where each list is comprised of 4 floating point values for red, green, blue, and alpha. It is up to you to use these values in conjunction with `tga-get-pixel` however you'd like.
 
 The *scanlines* is simply an array of offsets into the stream (1 per row for the image). Generally speaking it isn't very useful since all the scanlines have been pre-read. But it's here if you are interested.
 

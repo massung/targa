@@ -243,10 +243,10 @@
                 for i below 256
 
                 ;; read each color component
-                for alpha = (read-short stream)
-                for red = (read-short stream)
-                for green = (read-short stream)
-                for blue = (read-short stream)
+                for alpha = (float (/ (read-short stream) 65535))
+                for red = (float (/ (read-short stream) 65535))
+                for green = (float (/ (read-short stream) 65535))
+                for blue = (float (/ (read-short stream) 65535))
 
                 ;; fill in the table
                 do (setf (aref table i) (list red green blue alpha))
