@@ -88,6 +88,9 @@
 
 (in-package :targa)
 
+(eval-when (:execute :compile-toplevel :load-toplevel)
+  (proclaim '(optimize (speed 3) (debug 0))))
+
 ;;; -----------------------------------------------------
 
 (defstruct tga
@@ -338,13 +341,17 @@
 
 ;;; -----------------------------------------------------
 
+(declaim (inline read-short))
 (defun read-short (s)
   "Read an unsigned, little-endian, 16-bit short."
-  (logior (read-byte s) (ash (read-byte s) 8)))
+  (declare (optimize (speed 3) (debug 0)))
+  (the fixnum (logior (read-byte s) (ash (read-byte s) 8))))
 
+(declaim (inline read-long))
 (defun read-long (s)
   "Read an unsigned, little-endian, 32-bit long."
-  (logior (read-short s) (ash (read-short s) 16)))
+  (declare (optimize (speed 3) (debug 0)))
+  (the fixnum (logior (read-short s) (ash (read-short s) 16))))
 
 (defun read-bytes (s len)
   "Read a sequence of bytes from the stream."
@@ -376,34 +383,33 @@
 
 (defun read-color (s pixel-size alpha-size)
   "Read a true color (or black and white) entry from either the color map or the image data."
-  (loop with color-size = (min (truncate pixel-size 3) 8)
+  (declare (optimize speed (safety 0) (debug 0) (compilation-speed 0)))
+  (macrolet ((color-shift (x shift)
+               (let ((c (gensym)))
+                 `(let ((,c ,x))
+                    (if (zerop ,c) 0 (1- (ash (1+ ,c) ,shift)))))))
+    (let* ((bits-per-channel (ash (* pixel-size #x5556) -16)) ; / 3
+           (channel-size (min bits-per-channel 8))
 
-        ;; calculate the maximum value for each color component and the alpha
-        with pixel-max = (1- (ash 1 pixel-size))
-        with color-max = (1- (ash 1 color-size))
-        with alpha-max = (1- (ash 1 alpha-size))
+           ;; calculate the shift for each color component to be 8-bit
+           (channel-shift (- 8 channel-size))
+           (alpha-shift (- 8 alpha-size))
 
-        ;; read each component channel into the final color
-        for channel below pixel-size by 8
-        sum (ash (read-byte s) channel)
-        into c
+           ;; read each component channel into the final color
+           (c (loop for i below pixel-size by 8 sum (ash (read-byte s) i))))
 
-        ;; convert the final color into a list of floats
-        finally (return (if (<= pixel-size 8)
-                            (let ((g (float (/ (ldb (byte pixel-size 0) c) pixel-max))))
-                              (list g g g (if (zerop alpha-max)
-                                              1.0
-                                            (float (/ (ldb (byte alpha-size pixel-size) c) alpha-max)))))
-                          (let ((b (ldb (byte color-size (* color-size 0)) c))
-                                (g (ldb (byte color-size (* color-size 1)) c))
-                                (r (ldb (byte color-size (* color-size 2)) c))
-                                (a (ldb (byte alpha-size (* color-size 3)) c)))
-                            (list (float (/ r color-max))
-                                  (float (/ g color-max))
-                                  (float (/ b color-max))
-                                  (if (zerop alpha-max)
-                                      1.0
-                                    (float (/ a alpha-max)))))))))
+      ;; convert the final color into a list of floats
+      (if (<= pixel-size 8)
+          (let ((x (color-shift (ldb (byte (- pixel-size alpha-size) 0) c) channel-shift)))
+            (list x x x (if (zerop alpha-size)
+                            255
+                          (color-shift (ldb (byte alpha-size (- pixel-size alpha-size)) c) alpha-shift))))
+        (list (color-shift (ldb (byte channel-size (* channel-size 2)) c) channel-shift) ;r
+              (color-shift (ldb (byte channel-size (* channel-size 1)) c) channel-shift) ;g
+              (color-shift (ldb (byte channel-size (* channel-size 0)) c) channel-shift) ;b
+              (if (zerop alpha-size)
+                  255
+                (color-shift (ldb (byte alpha-size (- pixel-size alpha-size)) c) alpha-shift)))))))
 
 (defun read-color-map (s h)
   "Read all the color map entries from the stream."
