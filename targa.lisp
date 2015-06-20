@@ -391,6 +391,9 @@
     (let* ((bits-per-channel (ash (* pixel-size #x5556) -16)) ; / 3
            (channel-size (min bits-per-channel 8))
 
+           ;; calculate channel bits vs alpha bits
+           (channel-bits (- pixel-size alpha-size))
+
            ;; calculate the shift for each color component to be 8-bit
            (channel-shift (- 8 channel-size))
            (alpha-shift (- 8 alpha-size))
@@ -400,7 +403,7 @@
 
       ;; convert the final color into a list of floats
       (if (<= pixel-size 8)
-          (let ((x (color-shift (ldb (byte (- pixel-size alpha-size) 0) c) channel-shift)))
+          (let ((x (color-shift (ldb (byte channel-bits 0) c) (- 8 channel-bits))))
             (list x x x (if (zerop alpha-size)
                             255
                           (color-shift (ldb (byte alpha-size (- pixel-size alpha-size)) c) alpha-shift))))
@@ -409,7 +412,7 @@
               (color-shift (ldb (byte channel-size (* channel-size 0)) c) channel-shift) ;b
               (if (zerop alpha-size)
                   255
-                (color-shift (ldb (byte alpha-size (- pixel-size alpha-size)) c) alpha-shift)))))))
+                (color-shift (ldb (byte alpha-size channel-bits) c) alpha-shift)))))))
 
 (defun read-color-map (s h)
   "Read all the color map entries from the stream."
