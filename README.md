@@ -28,7 +28,7 @@ Once you have the TGA structure, you can use the reader functions to find out ev
 	CL-USER > (tga-get-pixel tga 34 16)
 	(248 248 0 255)
 	
-The TGA pixels is actually an array of arrays. The first array are all the scanlines, and each scanline is an array of pixels.
+The TGA pixels is a 1D array of all the pixels in scanline-order (read: row-major). The size of the array is the width * height of the image.
 
 No matter what format the pixels were originally stored in (color mapped, run-length encoded, 8-bit grayscale, 16-bit, 24-bit, 32-bit, etc.), each element of a scanline array is a list of 4 color components: red, green, blue, and alpha. Each of which is in the range of 0-255.
 

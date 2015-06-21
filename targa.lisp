@@ -134,7 +134,7 @@
           (setf y (- h y 1)))
 
         ;; the pixels are stored row-major
-        (aref (aref pixels y) x)))))
+        (aref pixels (+ (* y w) x))))))
 
 ;;; -----------------------------------------------------
 
@@ -443,32 +443,39 @@
               finally (return (aref color-map pixel)))
       (read-color s pixel-size (tga-header-attribute-bits h)))))
 
-(defun read-rle-pixels (s h color-map)
+(defun read-rle-pixels (s h into color-map)
   "Reads a run-length encoded list of pixels."
-  (let ((run (read-byte s)))
+  (let* ((run (read-byte s))
+         (len (1+ (logand run #x7f))))
     (if (zerop (logand run #x80))
-        (loop for i to (logand run #x7f) collect (read-pixel s h color-map))
+        (dotimes (i len len)
+          (vector-push (read-pixel s h color-map) into))
       (let ((pixel (read-pixel s h color-map)))
-        (make-list (1+ (logand run #x7f)) :initial-element pixel)))))
+        (dotimes (i len len)
+          (vector-push pixel into))))))
 
-(defun read-scanline (s h color-map)
+(defun read-scanline (s h into color-map)
   "Read a y-axis scanline of pixels."
-  (let ((scanline (make-array (tga-header-width h) :fill-pointer 0)))
-    (do ()
-        ((= (length scanline) (tga-header-width h)) scanline)
-      (if (tga-header-rle-compressed-p h)
-          (dolist (pixel (read-rle-pixels s h color-map))
-            (vector-push pixel scanline))
-        (vector-push (read-pixel s h color-map) scanline)))))
+  (loop with rle-p = (tga-header-rle-compressed-p h)
+        with pixels-left = (tga-header-width h)
+
+        ;; once all pixels for the scanline have been read, stop
+        until (zerop pixels-left)
+
+        ;; read a single pixel or an rle-compressed list of pixels
+        do (decf pixels-left (if rle-p
+                                 (read-rle-pixels s h into color-map)
+                               (prog1 1
+                                 (vector-push (read-pixel s h color-map) into))))))
 
 (defun read-image-data (s h color-map)
   "Read all the pixels for the image."
   (when (plusp (tga-header-image-type h))
-    (let ((scanlines (make-array (tga-header-height h) :fill-pointer 0)))
-      (dotimes (y (tga-header-height h) scanlines)
+    (let ((image (make-array (* (tga-header-width h) (tga-header-height h)) :fill-pointer 0)))
+      (dotimes (y (tga-header-height h) image)
         (if (tga-header-color-map-p h)
-            (vector-push (read-scanline s h color-map) scanlines)
-          (vector-push (read-scanline s h nil) scanlines))))))
+            (read-scanline s h image color-map)
+          (read-scanline s h image nil))))))
 
 (defun read-ext-and-tags (s)
   "Determine if this is a truevision file with an extension and a developer tags."
