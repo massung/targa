@@ -283,23 +283,23 @@
         (when (and (plusp offset) (file-position stream offset))
           (loop with width = (read-byte stream)
                 with height = (read-byte stream)
-                with scanlines = (make-array (tga-header-height header) :fill-pointer 0)
+
+                ;; allocate a new array of pixels
+                with pixels = (make-array (* width height) :fill-pointer 0)
 
                 ;; create a copy of the tga structure
                 with postage = (make-tga :header (copy-tga-header header)
                                          :color-map color-map
-                                         :pixels scanlines)
+                                         :pixels pixels)
 
                 ;; loop over each scanline in the postage stamp
                 for y below height
 
                 ;; read every pixel in the scanline into an array
-                do (let ((pixels (make-array width)))
-                     (dotimes (x width)
-                       (setf (aref pixels x) (read-pixel stream header color-map)))
-                     (setf (aref scanlines y) pixels))
+                do (dotimes (x width)
+                     (vector-push (read-pixel stream header color-map) pixels))
 
-                ;; return the width, height, and pixel data
+                ;; return the new tga image after updating the width and height
                 finally (return (prog1 postage
                                   (setf (slot-value (tga-header postage) 'width) width
                                         (slot-value (tga-header postage) 'height) height)))))))))
